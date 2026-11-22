@@ -4,6 +4,7 @@
 > **Bài Thực Hành Số 2:** Router, Middleware và Bảo mật với JWT trong RESTful API  
 > **Bài Thực Hành Số 3:** Xây dựng dịch vụ Quản lý Sản phẩm độc lập theo kiến trúc SOA  
 > **Bài Thực Hành Số 4:** Xây dựng dịch vụ Quản lý Đơn hàng với kiểm tra tồn kho liên service  
+> **Bài Thực Hành Số 5:** Xây dựng dịch vụ Báo cáo (Reporting) tổng hợp dữ liệu liên service  
 
 ---
 
@@ -27,7 +28,7 @@
 
 Dự án này là chuỗi thực hành hoàn chỉnh nhằm xây dựng dịch vụ **RESTful API chuẩn hóa** sử dụng ngôn ngữ **Python** và nền tảng **Django / Django REST Framework (DRF)**.
 
-Dự án tích hợp đầy đủ nội dung của 4 bài thực hành:
+Dự án tích hợp đầy đủ nội dung của 5 bài thực hành:
 - **Bài thực hành số 1:** Thiết lập môi trường Python/Django, cài đặt REST Framework, xây dựng API đầu tiên in dòng chuỗi JSON `{"message": "hello-world"}` và kiểm thử qua Postman / Swagger.
 - **Bài thực hành số 2:** Mở rộng hệ thống với:
   - Cơ chế định tuyến linh hoạt (**Router & URL Rewrite**).
@@ -44,6 +45,11 @@ Dự án tích hợp đầy đủ nội dung của 4 bài thực hành:
   - RESTful API CRUD đầy đủ cho đơn hàng (`GET/POST/PUT/DELETE /orders`) và chi tiết đơn hàng (`GET/POST/PUT/DELETE /order_items`).
   - **Kiểm tra tồn kho liên service**: khi tạo đơn/mặt hàng, service gọi `GET /products/id` sang Service quản lý sản phẩm và *snapshot* tên & đơn giá tại thời điểm đặt hàng; tổng tiền (`total_amount`) luôn được tính lại tự động.
   - Xác thực **ủy quyền qua Service 1** (service-to-service): middleware gọi `GET /auth` để kiểm tra JWT, sau đó **forward token** sang Service 2 khi kiểm tra tồn kho.
+- **Bài thực hành số 5:** Xây dựng **Service Báo cáo (Reporting)** — service thứ tư tổng hợp dữ liệu liên service:
+  - Project Django thứ tư `report_service` chạy trên **cổng riêng 8003** với **cơ sở dữ liệu riêng** `db_reports.sqlite3`.
+  - RESTful API đầy đủ cho báo cáo đơn hàng (`GET/POST/DELETE /reports/orders`) và báo cáo sản phẩm (`GET/POST/DELETE /reports/products`).
+  - **Tổng hợp doanh thu / chi phí / lợi nhuận** từ Service quản lý đơn hàng (8002) và Service quản lý sản phẩm (8001): tạo báo cáo đơn tự sinh báo cáo từng sản phẩm; `cost_rate` (mặc định 0.7) và `unit_cost` là tham số tính chi phí.
+  - Xác thực **ủy quyền qua Service 1** (service-to-service): middleware gọi `GET /auth` để kiểm tra JWT, sau đó **forward token** sang Service 2 + Service 3 khi kéo dữ liệu tổng hợp.
 
 ---
 
@@ -90,6 +96,20 @@ Dự án tích hợp đầy đủ nội dung của 4 bài thực hành:
 | **8. GET/POST/PUT/DELETE /order_items — CRUD chi tiết đơn** |  **100% Đạt** | Bộ view + serializer tại `order_service/orders/views.py` / `serializers.py`: thêm mặt hàng → `total_amount` tăng; sửa `quantity` → `total_price` & `total_amount` tính lại; xóa mặt hàng → `total_amount` tính lại. |
 | **9. Bảng orders + order_items theo Phụ lục** |  **100% Đạt** | Model `Order` và `OrderItem` tại `order_service/orders/models.py` đủ mọi cột theo Phụ lục. *(Lưu ý: đề ghi tên bảng chi tiết là `other_items` — đây là lỗi đánh máy của đề bài, hệ thống dùng đúng `order_items` theo đúng danh mục API của đề.)* |
 | **10. Xác thực qua service đã xây dựng ở Bài 2** |  **100% Đạt** | Middleware tại `order_service/orders/middleware.py`: bảo vệ mọi path `/orders` và `/order_items`; trích Bearer token → gọi HTTP `GET http://localhost:8000/auth` (thư viện `requests`) → cho phép nếu `200`, chặn `401` nếu token thiếu/sai, trả `503` nếu Service xác thực đang tắt. |
+
+### Đối chiếu Bài Thực Hành Số 5:
+| Yêu cầu trong PDF Bài 5 | Tình trạng | Vị trí triển khai trong Codebase |
+| :--- | :---: | :--- |
+| **1. Service hoạt động độc lập trên một cổng** |  **100% Đạt** | Project Django thứ tư `report_service/` khởi chạy bằng `python manage.py runserver 8003` (đề gợi ý mẫu `localhost:***3/`). |
+| **2. Cơ sở dữ liệu riêng (nguyên tắc SOA)** |  **100% Đạt** | File `report_service/db_reports.sqlite3` cấu hình tại `report_service/report_service/settings.py` — tách biệt hoàn toàn với `db.sqlite3` (Service 1), `db_products.sqlite3` (Service 2) và `db_orders.sqlite3` (Service 3). |
+| **3. GET /reports/orders + GET /reports/orders/id** |  **100% Đạt** | View danh sách (list phẳng) + view chi tiết trả dữ liệu **lồng nhau** (báo cáo đơn + `product_reports` của đơn) tại `report_service/reports/views.py`, định tuyến trong `report_service/reports/urls.py`. |
+| **4. POST /reports/orders — tạo báo cáo đơn hàng** |  **100% Đạt** | View tạo báo cáo tại `report_service/reports/views.py`: gọi `OrderServiceClient.get_order()` (tại `report_service/reports/services.py`) sang `GET :8002/orders/<id>` — đơn không tồn tại → `404`, Service đơn hàng tắt → `503`; tính `total_revenue = total_amount`, `cost = unit_price × quantity × cost_rate` (mặc định 0.7, phải ∈ [0, 1] → sai khoảng trả `400`), `total_profit = revenue − cost`; **tự sinh** báo cáo sản phẩm cho từng dòng hàng trong cùng một transaction. |
+| **5. DELETE /reports/orders/id — xóa báo cáo đơn** |  **100% Đạt** | View xóa tại `report_service/reports/views.py` → `204 No Content`; các `ProductReport` con bị xóa theo nhờ `on_delete=CASCADE`. |
+| **6. GET /reports/products + GET /reports/products/id** |  **100% Đạt** | View danh sách + chi tiết báo cáo sản phẩm tại `report_service/reports/views.py` (kèm `order_report_id` liên kết về báo cáo đơn). |
+| **7. POST /reports/products — tạo báo cáo sản phẩm** |  **100% Đạt** | View tạo báo cáo tại `report_service/reports/views.py`: báo cáo đơn phải tồn tại (`order_report_id` sai → `400`); hỏi Service 2 sản phẩm còn tồn tại (404 → `400`, tắt → `503`); hỏi Service 3 đơn hàng gốc và **lọc các dòng hàng của sản phẩm đó** (không có → `400`); tổng hợp `total_sold = Σ quantity`, `revenue = Σ total_price`, `cost = unit_cost × total_sold`, `profit = revenue − cost`. |
+| **8. DELETE /reports/products/id — xóa báo cáo sản phẩm** |  **100% Đạt** | View xóa tại `report_service/reports/views.py` → `204 No Content`; xóa báo cáo sản phẩm không ảnh hưởng báo cáo đơn cha. |
+| **9. Bảng orders_reports + product_reports theo Phụ lục** |  **100% Đạt** | Model `OrderReport` và `ProductReport` tại `report_service/reports/models.py` đủ mọi cột theo Phụ lục. *(Lưu ý: khác các bài trước, đề bài 5 KHÔNG yêu cầu `created_at/updated_at` nên model không có trường timestamps; `product_reports.order_report_id` là FK về `orders_reports.id`.)* |
+| **10. Xác thực qua service đã xây dựng ở Bài 2** |  **100% Đạt** | Middleware tại `report_service/reports/middleware.py`: bảo vệ mọi path `/reports`; trích Bearer token → gọi HTTP `GET http://localhost:8000/auth` (thư viện `requests`) → cho phép nếu `200`, chặn `401` nếu token thiếu/sai, trả `503` nếu Service xác thực đang tắt. |
 
 ---
 
@@ -193,6 +213,60 @@ Nhằm đáp ứng linh hoạt các giao diện Client khác nhau, hệ thống 
 3. Middleware của Service 3 **gọi sang Service 1** (`GET /auth`) kiểm tra token — token thiếu/sai → `401`, Service 1 tắt → `503`.
 4. Service 3 **gọi sang Service 2** (`GET /products/<id>`, forward token) kiểm tra tồn kho từng mặt hàng — không đủ tồn kho hoặc sản phẩm không tồn tại → `400`, Service 2 tắt → `503`.
 5. Hợp lệ → tạo Order + OrderItem (snapshot `product_name`, `unit_price` tại thời điểm đặt) và tính `total_amount = Σ(quantity × unit_price)` trong **DB riêng** `db_orders.sqlite3` → trả `201 Created`.
+
+### 3.5. Kiến trúc 4 service độc lập (Bài 5 — SOA)
+```text
++-----------------------------+       +----------------------------------+
+|   SERVICE 1: Auth           |       |   SERVICE 2: Product             |
+|   localhost:8000            |       |   localhost:8001                 |
+|   db.sqlite3 (bảng User)    |       |   db_products.sqlite3 (Product)  |
+|                             |       |                                  |
+|   POST /login  -> cấp JWT   |<------|   GET /products/<id> được Report |
+|   GET  /auth   -> valid?    |       |   service gọi khi tạo báo cáo SP |
++-----------------------------+       +----------------------------------+
+        ^      ^          ^                      ^
+        |      |          |                (5) hỏi sản phẩm tồn tại?
+   (3) hỏi     |          |                    GET /products/<id>
+   /auth       |          |                    (forward token)
+        |      |          |                          |
+        |      |          +-------------------+      |
+        |      |                              |      |
+        |   +--+------------------------------+------+
+        |   |   SERVICE 4: Report — Báo cáo tổng hợp
+        |   |   localhost:8003                    |
+        |   |   db_reports.sqlite3                |
+        |   |   (OrderReport + ProductReport)     |
+        |   |                                     |
+        |   |   middleware: bảo vệ /reports/*     |
+        |   |   Order/ProductServiceClient:       |
+        |   |   kéo dữ liệu 8001 + 8002 để tính   |
+        |   |   doanh thu / chi phí / lợi nhuận   |
+        |   +-------------------------------------+
+        |                   ^
+        |      +------------+
+        |      |  (4) hỏi dữ liệu đơn hàng
+        |      |      GET /orders/<id> (forward token)
+        |      v
++---------------------------------------------------------------------+
+|   SERVICE 3: Order — Quản lý Đơn hàng                               |
+|   localhost:8002 — db_orders.sqlite3 (Order + OrderItem)            |
++---------------------------------------------------------------------+
+        ^                         ^
+        | (1) đăng nhập           | (2) GET/POST/DELETE /reports/orders,
+        |                         |     /reports/products kèm Bearer token
+        v                         v
++---------------------------------------------------------------------+
+|                  CLIENT (Postman / Swagger UI / cURL)                |
++---------------------------------------------------------------------+
+```
+**Luồng xử lý khi tạo báo cáo đơn hàng (`POST :8003/reports/orders`):**
+1. Client đăng nhập tại **Service 1** (`POST /login`, cổng 8000) và nhận chuỗi JWT.
+2. Client gọi `POST http://localhost:8003/reports/orders` kèm Header `Authorization: Bearer <token>` và body `{"order_id": 3, "cost_rate": 0.7}`.
+3. Middleware của Service 4 **gọi sang Service 1** (`GET /auth`) kiểm tra token — token thiếu/sai → `401`, Service 1 tắt → `503`.
+4. Service 4 **gọi sang Service 3** (`GET /orders/<id>`, forward token) lấy tổng tiền + từng dòng hàng — đơn không tồn tại → `404`, Service 3 tắt → `503`.
+5. Controller tính toán: `total_revenue = total_amount`; mỗi dòng hàng `cost = unit_price × quantity × cost_rate`; `total_cost = Σ cost`; `total_profit = revenue − cost` → ghi **DB riêng** `db_reports.sqlite3` (1 dòng `orders_reports` + tự sinh `product_reports` cho từng sản phẩm) → trả `201 Created`.
+
+**Luồng xử lý khi tạo báo cáo sản phẩm (`POST :8003/reports/products`):** middleware xác thực như trên → kiểm tra `order_report_id` tồn tại trong DB (sai → `400`) → gọi **Service 2** kiểm tra sản phẩm còn tồn tại (404 → `400`, tắt → `503`) → gọi **Service 3** lấy đơn hàng gốc và lọc các dòng hàng của sản phẩm (không có → `400`) → tính `total_sold = Σ quantity`, `revenue = Σ total_price`, `cost = unit_cost × total_sold`, `profit = revenue − cost` → `201 Created`.
 
 ---
 
@@ -300,6 +374,62 @@ class OrderItem(models.Model):
 >
 > 💡 Service 3 dùng **file SQLite riêng** `db_orders.sqlite3` — dữ liệu đơn hàng tách biệt hoàn toàn với người dùng (Service 1) và sản phẩm (Service 2); thông tin sản phẩm trong đơn được **snapshot** (`product_name`, `unit_price`) nên đơn hàng vẫn đọc được lịch sử giá dù sản phẩm sau đó bị đổi tên/đổi giá/xóa.
 
+### Bảng `orders_reports` (Service Báo cáo — Bài 5)
+Service 4 sử dụng bảng **`OrderReport`** được cấu hình trong `report_service/reports/models.py`:
+
+```python
+class OrderReport(models.Model):
+    id = models.AutoField(primary_key=True)
+    order_id = models.IntegerField()
+    total_revenue = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_profit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'orders_reports'
+```
+
+| Tên cột (Column) | Kiểu dữ liệu (Data Type) | Thuộc tính / Ràng buộc | Mục đích sử dụng |
+| :--- | :--- | :--- | :--- |
+| **`id`** | `INTEGER` (`AutoField`) | **PRIMARY KEY**, Auto Increment | Khóa chính định danh duy nhất cho báo cáo đơn hàng |
+| **`order_id`** | `INTEGER` | `NOT NULL` | ID đơn hàng — **lưu vết** để liên kết với dịch vụ quản lý đơn hàng (Service 3, không dùng FK vì khác database) |
+| **`total_revenue`** | `DECIMAL(10,2)` | `DEFAULT 0` | Tổng doanh thu của đơn hàng (= `total_amount` của đơn) |
+| **`total_cost`** | `DECIMAL(10,2)` | `DEFAULT 0` | Tổng chi phí nhập sản phẩm trong đơn hàng |
+| **`total_profit`** | `DECIMAL(10,2)` | `DEFAULT 0` | Tổng lợi nhuận (`total_revenue − total_cost`) |
+
+> 💡 Khác các bài trước, **đề bài 5 không có trường timestamps** nên model không có `created_at/updated_at` — đúng theo Phụ lục của đề.
+
+### Bảng `product_reports` (báo cáo theo sản phẩm — Service Báo cáo, Bài 5)
+
+```python
+class ProductReport(models.Model):
+    id = models.AutoField(primary_key=True)
+    order_report = models.ForeignKey(OrderReport, related_name='product_reports',
+                                     on_delete=models.CASCADE, db_column='order_report_id')
+    product_id = models.IntegerField()
+    total_sold = models.IntegerField(default=0)
+    revenue = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    profit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'product_reports'
+```
+
+| Tên cột (Column) | Kiểu dữ liệu (Data Type) | Thuộc tính / Ràng buộc | Mục đích sử dụng |
+| :--- | :--- | :--- | :--- |
+| **`id`** | `INTEGER` (`AutoField`) | **PRIMARY KEY**, Auto Increment | Khóa chính định danh duy nhất cho báo cáo sản phẩm |
+| **`order_report_id`** | `INTEGER` | **FOREIGN KEY** → `orders_reports.id` (related_name `product_reports`, `ON DELETE CASCADE`) | ID báo cáo đơn hàng sở hữu dòng báo cáo sản phẩm này |
+| **`product_id`** | `INTEGER` | `NOT NULL` | ID sản phẩm — **lưu vết** để liên kết với dịch vụ quản lý sản phẩm (Service 2) |
+| **`total_sold`** | `INTEGER` | `DEFAULT 0` | Tổng số lượng sản phẩm đã bán trong đơn |
+| **`revenue`** | `DECIMAL(10,2)` | `DEFAULT 0` | Doanh thu từ sản phẩm |
+| **`cost`** | `DECIMAL(10,2)` | `DEFAULT 0` | Chi phí nhập sản phẩm |
+| **`profit`** | `DECIMAL(10,2)` | `DEFAULT 0` | Lợi nhuận (`revenue − cost`) |
+
+> ⚠️ **Lưu ý về khóa ngoại:** `product_reports.order_report_id` là **FK về bảng `orders_reports`** (trong cùng DB của Service 4) — xóa báo cáo đơn hàng sẽ tự động xóa các báo cáo sản phẩm con. Ngược lại, `order_id` và `product_id` chỉ là INT **lưu vết** liên service (không thể dùng FK xuyên qua 2 database riêng của SOA).
+>
+> 💡 Service 4 dùng **file SQLite riêng** `db_reports.sqlite3` — số liệu tổng hợp được "đóng băng" tại thời điểm tạo báo cáo, giúp tra cứu báo cáo nhanh mà không phải gọi lại Service 2 + Service 3 mỗi lần xem.
+
 ---
 
 ## 5. CẤU TRÚC THƯ MỤC MÃ NGUỒN
@@ -334,7 +464,8 @@ Django_Learning/
 │   ├── BÀI THỰC HÀNH SỐ 1.pdf          # Đề bài 1: Cài đặt môi trường & Hello World API
 │   ├── BÀI THỰC HÀNH SỐ 2.pdf          # Đề bài 2: Router, Middleware & JWT
 │   ├── BÀI THỰC HÀNH SỐ 3.pdf          # Đề bài 3: Service Quản lý Sản phẩm (SOA)
-│   └── BÀI THỰC HÀNH SỐ 4.pdf          # Đề bài 4: Service Quản lý Đơn hàng (kiểm tra tồn kho)
+│   ├── BÀI THỰC HÀNH SỐ 4.pdf          # Đề bài 4: Service Quản lý Đơn hàng (kiểm tra tồn kho)
+│   └── BÀI THỰC HÀNH SỐ 5.pdf          # Đề bài 5: Service Báo cáo (tổng hợp liên service)
 │
 ├── product_service/                   # SERVICE 2 — Quản lý Sản phẩm (Bài 3, cổng 8001)
 │   ├── product_service/               # Cấu hình project Service 2
@@ -369,6 +500,24 @@ Django_Learning/
 │   │   └── views.py                  # Controller CRUD /orders & /order_items
 │   ├── db_orders.sqlite3             # Cơ sở dữ liệu riêng của Service 3
 │   └── manage.py                     # Tập lệnh quản trị Django CLI của Service 3
+│
+├── report_service/                    # SERVICE 4 — Báo cáo (Bài 5, cổng 8003)
+│   ├── report_service/                # Cấu hình project Service 4
+│   │   ├── settings.py                # DB riêng + AUTH/PRODUCT/ORDER_SERVICE_URL
+│   │   └── urls.py                    # Tuyến đường /reports/orders & /reports/products (cổng 8003)
+│   ├── reports/                       # App chính của Service 4
+│   │   ├── management/commands/
+│   │   │   └── seed_reports.py        # Lệnh tạo báo cáo mẫu kiểm thử nhanh
+│   │   ├── migrations/
+│   │   │   └── 0001_initial.py        # File khởi tạo lược đồ bảng orders_reports + product_reports
+│   │   ├── middleware.py              # Middleware gọi /auth (Service 1) bảo vệ API
+│   │   ├── models.py                  # Model OrderReport + ProductReport (theo Phụ lục đề bài)
+│   │   ├── serializers.py             # Serializer cho OrderReport (lồng product_reports) & ProductReport
+│   │   ├── services.py                # OrderServiceClient + ProductServiceClient (kéo dữ liệu 8001/8002)
+│   │   ├── tests.py                   # Bộ 12 kiểm thử tự động (mock, không cần server)
+│   │   └── views.py                   # Controller CRUD /reports/orders & /reports/products
+│   ├── db_reports.sqlite3             # Cơ sở dữ liệu riêng của Service 4
+│   └── manage.py                      # Tập lệnh quản trị Django CLI của Service 4
 │
 ├── db.sqlite3                          # Cơ sở dữ liệu SQLite cục bộ (Service 1)
 ├── manage.py                           # Tập lệnh quản trị Django CLI
@@ -506,6 +655,25 @@ Máy chủ Service 3 sẽ lắng nghe tại địa chỉ: `http://localhost:8002
 
 ---
 
+### Bước 8: Khởi động Service Báo cáo (Bài 5)
+
+Từ Bài 5, hệ thống gồm **4 service độc lập** chạy trên 4 cổng khác nhau — cần mở **terminal riêng thứ 4** (kích hoạt `venv` như Bước 1; Terminal 1, 2 và 3 vẫn phải đang chạy):
+
+**Terminal 4 — Service báo cáo (cổng 8003):**
+```powershell
+cd Django_Learning\report_service
+..\venv\Scripts\Activate.ps1
+python manage.py migrate
+python manage.py seed_reports
+python manage.py runserver 8003
+```
+
+Máy chủ Service 4 sẽ lắng nghe tại địa chỉ: `http://localhost:8003/`.
+
+> ⚠️ Service báo cáo cần **CẢ 3 service kia đang chạy** để tạo báo cáo mới: Terminal 1 (8000) để xác thực token, Terminal 2 (8001) khi tạo báo cáo sản phẩm, Terminal 3 (8002) để kéo dữ liệu đơn hàng. Các API GET / DELETE vẫn dùng được bình thường ngay cả khi service đối tác tắt vì số liệu đã được tổng hợp sẵn trong `db_reports.sqlite3`.
+
+---
+
 ## 8. TÀI LIỆU API CHI TIẾT (API DOCUMENTATION)
 
 ### Danh sách Endpoint tổng quan:
@@ -530,6 +698,13 @@ Máy chủ Service 3 sẽ lắng nghe tại địa chỉ: `http://localhost:8002
 | **Order Items — Danh sách/Chi tiết** | `GET` | `http://localhost:8002/order_items` hoặc `/order_items/id` | Lấy danh sách/chi tiết các mặt hàng trong đơn (Service 3) |  **Cần Bearer Token** |
 | **Order Items — Thêm/Sửa/Xóa** | `POST`/`PUT`/`DELETE` | `http://localhost:8002/order_items` hoặc `/order_items/id` | Thêm, sửa số lượng, xóa mặt hàng — tổng tiền tự tính lại (Service 3) |  **Cần Bearer Token** |
 | **Swagger UI (Service 3)** | `GET` | `http://localhost:8002/swagger/` | Giao diện tài liệu API dịch vụ đơn hàng | Public |
+| **Reports (Orders) — Danh sách/Chi tiết** | `GET` | `http://localhost:8003/reports/orders` hoặc `/reports/orders/id` | Lấy danh sách (phẳng) / chi tiết báo cáo đơn hàng kèm `product_reports` (Service 4) |  **Cần Bearer Token** |
+| **Reports (Orders) — Tạo báo cáo** | `POST` | `http://localhost:8003/reports/orders` | Tổng hợp doanh thu/chi phí/lợi nhuận một đơn hàng từ Service 3 (Service 4) |  **Cần Bearer Token** |
+| **Reports (Orders) — Xóa** | `DELETE` | `http://localhost:8003/reports/orders/id` | Xóa báo cáo đơn hàng (cascade báo cáo sản phẩm) (Service 4) |  **Cần Bearer Token** |
+| **Reports (Products) — Danh sách/Chi tiết** | `GET` | `http://localhost:8003/reports/products` hoặc `/reports/products/id` | Lấy danh sách / chi tiết báo cáo sản phẩm (Service 4) |  **Cần Bearer Token** |
+| **Reports (Products) — Tạo báo cáo** | `POST` | `http://localhost:8003/reports/products` | Tổng hợp số liệu bán được của một sản phẩm trong đơn (Service 4) |  **Cần Bearer Token** |
+| **Reports (Products) — Xóa** | `DELETE` | `http://localhost:8003/reports/products/id` | Xóa một báo cáo sản phẩm (Service 4) |  **Cần Bearer Token** |
+| **Swagger UI (Service 4)** | `GET` | `http://localhost:8003/swagger/` | Giao diện tài liệu API dịch vụ báo cáo | Public |
 | **Swagger UI** | `GET` | `/swagger/` hoặc `/docs/` | Giao diện tài liệu API trực quan | Public |
 | **OpenAPI Schema** | `GET` | `/api/schema/` | Tải về cấu hình JSON/YAML OpenAPI | Public |
 | **Django Admin** | `GET` | `/admin/` | Trang quản trị dữ liệu hệ thống | Cần tài khoản Admin |
@@ -836,6 +1011,126 @@ Toàn bộ endpoint của Service đơn hàng yêu cầu Header `Authorization: 
   curl http://localhost:8002/orders/1 -H "Authorization: Bearer <TOKEN>"
   ```
 
+#### 8.7. API Báo cáo (Service 4 — Bài 5)
+
+Toàn bộ endpoint của Service báo cáo yêu cầu Header `Authorization: Bearer <token>` — token lấy từ Service 1 (xem mục 8.1).
+
+- **Đường dẫn gốc:** `http://localhost:8003/reports/orders` và `http://localhost:8003/reports/products`
+
+| Phương thức | Đường dẫn | Chức năng | Phản hồi |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/reports/orders` | Lấy danh sách tất cả báo cáo đơn hàng (dạng phẳng) | `200 OK` |
+| `POST` | `/reports/orders` | Tạo báo cáo đơn hàng mới (tổng hợp từ Service 3, tự sinh báo cáo từng sản phẩm) | `201 Created` / `400` / `404` / `503` |
+| `GET` | `/reports/orders/id` | Chi tiết báo cáo đơn hàng kèm danh sách `product_reports` lồng nhau | `200 OK` / `404 Not Found` |
+| `DELETE` | `/reports/orders/id` | Xóa báo cáo đơn hàng (cascade các báo cáo sản phẩm con) | `204 No Content` / `404 Not Found` |
+| `GET` | `/reports/products` | Lấy danh sách tất cả báo cáo sản phẩm | `200 OK` |
+| `POST` | `/reports/products` | Tạo báo cáo sản phẩm mới (tổng hợp từ Service 2 + Service 3) | `201 Created` / `400` / `503` |
+| `GET` | `/reports/products/id` | Chi tiết một báo cáo sản phẩm | `200 OK` / `404 Not Found` |
+| `DELETE` | `/reports/products/id` | Xóa một báo cáo sản phẩm | `204 No Content` / `404 Not Found` |
+
+**Hai tham số tính chi phí:**
+- **`cost_rate`** (tùy chọn, `POST /reports/orders`) — *tỷ lệ chi phí nhập* so với giá bán, dùng để ước lượng chi phí khi chưa biết giá vốn thật. Mặc định `0.7` (chi phí = 70% doanh thu), phải nằm trong khoảng **[0, 1]** — ngoài khoảng → `400`. Mỗi dòng hàng: `cost = unit_price × quantity × cost_rate`.
+- **`unit_cost`** (bắt buộc, `POST /reports/products`) — *đơn giá nhập thực tế* của sản phẩm do người dùng cung cấp. Khi tạo báo cáo sản phẩm: `cost = unit_cost × total_sold` (`total_sold` = tổng số lượng sản phẩm đó bán được trong đơn).
+
+**Body JSON tạo báo cáo đơn hàng (`POST /reports/orders`)** — lấy dữ liệu đơn `<order_id>` từ Service 3:
+```json
+{"order_id": 3, "cost_rate": 0.7}
+```
+- **Phản hồi thành công (`201 Created`)** — ví dụ đơn #3 có `total_amount = 73200000.00` (2 Laptop Dell XPS 15 @35000000 + 1 Bàn phím Keychron K2 @3200000), `cost_rate 0.7`:
+  ```json
+  {
+    "message": "Tạo báo cáo đơn hàng thành công",
+    "report": {
+      "id": 3,
+      "order_id": 3,
+      "total_revenue": "73200000.00",
+      "total_cost": "51240000.00",
+      "total_profit": "21960000.00",
+      "product_reports": [
+        {
+          "id": 5,
+          "order_report_id": 3,
+          "product_id": 1,
+          "total_sold": 2,
+          "revenue": "70000000.00",
+          "cost": "49000000.00",
+          "profit": "21000000.00"
+        },
+        {
+          "id": 6,
+          "order_report_id": 3,
+          "product_id": 3,
+          "total_sold": 1,
+          "revenue": "3200000.00",
+          "cost": "2240000.00",
+          "profit": "960000.00"
+        }
+      ]
+    }
+  }
+  ```
+
+**Body JSON tạo báo cáo sản phẩm (`POST /reports/products`)** — tổng hợp số liệu bán được của một sản phẩm trong đơn đã có báo cáo:
+```json
+{"order_report_id": 1, "product_id": 2, "unit_cost": 2500000}
+```
+- **Phản hồi thành công (`201 Created`)** — ví dụ sản phẩm #2 bán được 1 cái với doanh thu `2500000.00`, giá nhập `2500000`:
+  ```json
+  {
+    "message": "Tạo báo cáo sản phẩm thành công",
+    "report": {
+      "id": 7,
+      "order_report_id": 1,
+      "product_id": 2,
+      "total_sold": 1,
+      "revenue": "2500000.00",
+      "cost": "2500000.00",
+      "profit": "0.00"
+    }
+  }
+  ```
+
+**Các mã lỗi thường gặp:**
+- **`401 Unauthorized`** — thiếu token, token sai hoặc hết hạn (middleware hỏi Service 1):
+  ```json
+  {"error": "Unauthorized", "detail": "Vui lòng cung cấp JWT token qua Header 'Authorization: Bearer <token>'."}
+  ```
+- **`400 Bad Request`** — dữ liệu không hợp lệ, gồm: `cost_rate` ngoài [0, 1]; `order_report_id` không có trong DB; sản phẩm không tồn tại ở Service 2 (404); sản phẩm không có dòng hàng nào trong đơn; thiếu `unit_cost`:
+  ```json
+  {"error": "Dữ liệu không hợp lệ", "detail": "cost_rate: Tỷ lệ chi phí phải nằm trong khoảng từ 0 đến 1."}
+  ```
+  ```json
+  {"error": "Sản phẩm không có trong đơn hàng", "detail": "Sản phẩm #2 không xuất hiện trong đơn hàng #3."}
+  ```
+- **`404 Not Found`** — báo cáo với `id` không tồn tại; hoặc `POST /reports/orders` khi đơn hàng không tồn tại ở Service 3:
+  ```json
+  {"error": "Không tìm thấy đơn hàng", "detail": "Đơn hàng #999 không tồn tại trong dịch vụ quản lý đơn hàng."}
+  ```
+- **`503 Service Unavailable`** — Service xác thực (8000), Service đơn hàng (8002) hoặc Service sản phẩm (8001) đang tắt khi cần gọi:
+  ```json
+  {"error": "Service Unavailable", "detail": "Service quản lý đơn hàng hiện không khả dụng. Vui lòng thử lại sau."}
+  ```
+
+**Lệnh cURL kiểm thử nhanh:**
+```bash
+# 1) Lấy token từ Service 1
+curl -X POST http://localhost:8000/login -H "Content-Type: application/json" \
+  -d "{\"userName\": \"testuser\", \"password\": \"MTIzNDU2\"}"
+
+# 2) Tạo báo cáo cho đơn hàng #3 (thay <TOKEN> bằng chuỗi token vừa nhận)
+curl -X POST http://localhost:8003/reports/orders -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d "{\"order_id\": 3, \"cost_rate\": 0.7}"
+
+# 3) Xem chi tiết báo cáo đơn hàng (kèm product_reports lồng nhau)
+curl http://localhost:8003/reports/orders/1 -H "Authorization: Bearer <TOKEN>"
+
+# 4) Tạo báo cáo sản phẩm (unit_cost = 2500000)
+curl -X POST http://localhost:8003/reports/products -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d "{\"order_report_id\": 1, \"product_id\": 2, \"unit_cost\": 2500000}"
+```
+
 ---
 
 ## 9. HƯỚNG DẪN KIỂM THỬ VỚI POSTMAN & SWAGGER UI
@@ -921,13 +1216,34 @@ Bảng kết quả chạy thực tế 12 kịch bản kiểm thử:
 | 11 | `DELETE :8002/orders/id` xóa đơn hàng | `204 No Content` |
 | 12 | **Tắt Service 1 (8000)** / **tắt Service 2 (8001)** rồi gọi API | Mọi request → `503` / tạo đơn nhận `503` khi kiểm tra tồn kho |
 
+### 9.5. Kịch bản kiểm thử Service Báo cáo (Bài 5) & kết quả thực tế
+
+Quy trình trên Swagger UI:
+1. Mở `http://localhost:8000/swagger/` → mục **POST /login** → **Try it out** → nhập `userName: testuser`, `password: MTIzNDU2` → **Execute** → copy chuỗi `token`.
+2. Mở tab mới `http://localhost:8003/swagger/` → nhấn nút **Authorize 🔓** → dán token vào ô Value → **Authorize** → **Close**.
+3. Lần lượt **Try it out** các endpoint `/reports/orders` và `/reports/products` (GET, POST, DELETE).
+
+Bảng kết quả chạy thực tế 9 kịch bản kiểm thử:
+
+| # | Kịch bản | Kết quả thực tế |
+| :---: | :--- | :--- |
+| 1 | `POST :8000/login` (testuser / mật khẩu Base64) | `200 OK` + chuỗi JWT token |
+| 2 | `GET :8003/reports/orders` **không kèm token** | `401 Unauthorized` — middleware chặn |
+| 3 | `POST :8003/reports/orders` với `{"order_id": 3}` (đơn đã tạo ở Bài 4, để mặc định `cost_rate: 0.7`) | `201 Created` + `total_revenue = total_amount` của đơn, `total_profit = revenue − 73200000×0.7`, tự sinh `product_reports` cho từng mặt hàng |
+| 4 | `GET :8003/reports/orders/id` xem chi tiết | `200 OK` + danh sách `product_reports` lồng trong báo cáo đơn |
+| 5 | `POST :8003/reports/orders` với `cost_rate: 1.5` | `400 Bad Request` — tỷ lệ chi phí phải ∈ [0, 1] |
+| 6 | `POST :8003/reports/products` với `{"order_report_id": 1, "product_id": 2, "unit_cost": 2500000}` | `201 Created` + `total_sold`, `revenue`, `cost = unit_cost × total_sold`, `profit` đúng nghiệp vụ |
+| 7 | `POST :8003/reports/products` với sản phẩm **không có trong đơn** / `order_report_id` sai | `400 Bad Request` — từ chối tạo báo cáo |
+| 8 | `DELETE :8003/reports/products/id` rồi `DELETE :8003/reports/orders/id` | `204 No Content` — xóa báo cáo sản phẩm không ảnh hưởng báo cáo đơn; xóa báo cáo đơn cascade hết báo cáo con |
+| 9 | **Tắt Terminal 1 (8000)** / **Terminal 2 (8001)** / **Terminal 3 (8002)** rồi gọi API | Mọi request → `503` (mất Service xác thực) / tạo báo cáo sản phẩm → `503` / tạo báo cáo đơn → `503` |
+
 ---
 
-## 10. KIỂM THỬ TỰ ĐỘNG (AUTOMATED UNIT TESTS)
+## 10. KIỂM THỨ TỰ ĐỘNG (AUTOMATED UNIT TESTS)
 
 Dự án được xây dựng kèm bộ test tự động độc lập tại file [core/tests.py](file:///d:/CODES/Py/Django_Learning/core/tests.py) sử dụng `APITestCase` của Django REST Framework.
 
-Từ Bài 4, Service Quản lý Đơn hàng có thêm bộ **12 test tự động** tại `order_service/orders/tests.py`. Điểm đặc biệt: toàn bộ test dùng `unittest.mock` để **giả lập (mock)** các lời gọi HTTP sang Service 1 (`GET /auth`) và Service 2 (`GET /products/<id>`), nên **không cần khởi động bất kỳ server nào** (8000/8001/8002) vẫn chạy được đầy đủ — kể cả các kịch bản "Service tắt" hay "tồn kho không đủ".
+Từ Bài 4, Service Quản lý Đơn hàng có thêm bộ **12 test tự động** tại `order_service/orders/tests.py`. Từ Bài 5, Service Báo cáo cũng có bộ **12 test tự động** tại `report_service/reports/tests.py`. Điểm đặc biệt: toàn bộ test dùng `unittest.mock` để **giả lập (mock)** các lời gọi HTTP sang các service đối tác (Service 1: `GET /auth`; Service 2: `GET /products/<id>`; Service 3: `GET /orders/<id>`), nên **không cần khởi động bất kỳ server nào** (8000/8001/8002/8003) vẫn chạy được đầy đủ — kể cả các kịch bản "Service tắt" hay "đơn hàng không tồn tại".
 
 ### Lệnh chạy toàn bộ test:
 ```powershell
@@ -936,6 +1252,10 @@ python manage.py test
 
 # Bộ test Service 3 (đơn hàng — chạy trong thư mục order_service, không cần bật server)
 cd order_service
+python manage.py test
+
+# Bộ test Service 4 (báo cáo — chạy trong thư mục report_service, không cần bật server)
+cd report_service
 python manage.py test
 ```
 
@@ -980,6 +1300,25 @@ Destroying test database for alias 'default'...
 | 12 | `test_12_delete_order_item_recomputes_total` | `DELETE /order_items/id` → `204` + `total_amount` của đơn giảm về 0 khi hết item. |
 
 > 💡 Kỹ thuật mock: cả middleware và ProductServiceClient đều `import requests`, nên test gắn cho `requests.get` một `side_effect` điều hướng theo URL — lời gọi `/auth` nhận phản hồi của Service 1, lời gọi `/products/<id>` nhận phản hồi của Service 2; các kịch bản lỗi (404, hết tồn kho, mất kết nối) được mô phỏng bằng cách thay đổi trạng thái phản hồi giả lập.
+
+### Chi tiết 12 test cases của Service Báo cáo (`report_service/reports/tests.py`):
+
+| # | Tên test | Ý nghĩa |
+| :---: | :--- | :--- |
+| 1 | `test_01_get_reports_without_token_returns_401` | Middleware chặn `/reports/orders` và `/reports/products` khi thiếu Bearer token → `401` (không gọi network). |
+| 2 | `test_02_get_reports_with_valid_token_returns_200` | Token được Service 1 (mock) xác nhận → `200 OK`; GET list phẳng, GET detail trả `product_reports` lồng nhau, `id` lạ → `404`; Service 1 từ chối → `401`. |
+| 3 | `test_03_create_order_report_success` | `POST /reports/orders` với `cost_rate` mặc định 0.7 → `201`; `total_revenue = 73200000.00`, `total_cost = 51240000.00`, `total_profit = 21960000.00`; tự sinh 2 `ProductReport` với `total_sold`/`revenue` đúng. |
+| 4 | `test_04_create_order_report_custom_cost_rate` | `POST /reports/orders` với `cost_rate=0.5` → `201`; tính lại chi phí/lợi nhuận đúng theo tỷ lệ tùy chọn. |
+| 5 | `test_05_create_order_report_invalid_cost_rate` | `cost_rate` ngoài [0, 1] (1.5 và −1) → `400`, không tạo báo cáo. |
+| 6 | `test_06_create_order_report_order_not_found` | Service đơn hàng (mock) trả `404` → `404`, không tạo báo cáo. |
+| 7 | `test_07_create_order_report_order_service_down` | Service đơn hàng "tắt" (giả lập `RequestException`) → `503 Service Unavailable`. |
+| 8 | `test_08_delete_order_report_cascades` | `DELETE /reports/orders/id` → `204`; các `product_reports` con bị xóa theo (CASCADE); xóa lần nữa → `404`. |
+| 9 | `test_09_create_product_report_success` | `POST /reports/products` (sản phẩm có mặt trong đơn, `unit_cost=2500000`) → `201`; `total_sold`, `revenue`, `cost`, `profit` đúng nghiệp vụ. |
+| 10 | `test_10_create_product_report_order_report_missing` | `order_report_id` không có trong DB → `400`, không tạo báo cáo. |
+| 11 | `test_11_create_product_report_not_in_order` | Sản phẩm không có dòng hàng nào trong đơn → `400`; Service sản phẩm trả `404` → `400`. |
+| 12 | `test_12_delete_product_report_returns_204` | `DELETE /reports/products/id` → `204` (báo cáo đơn cha vẫn còn); xóa lần nữa → `404`. |
+
+> 💡 Kỹ thuật mock giống hệt Bài 4 nhưng mở rộng cho 3 service: `requests.get` được gắn `side_effect` điều hướng theo URL — `/auth` nhận phản hồi Service 1, `/orders/<id>` nhận Service 3, `/products/<id>` nhận Service 2 (tự gắn `id` theo URL cho giống service thật); các kịch bản lỗi (404, mất kết nối) mô phỏng bằng trạng thái giả lập.
 
 ---
 
@@ -1028,10 +1367,22 @@ Destroying test database for alias 'default'...
 - **Nguyên nhân:** Service xác thực (Terminal 1 chạy `runserver 8000`) đã bị tắt hoặc chưa khởi động — middleware của Service đơn hàng không gọi được `GET /auth`.
 - **Cách khắc phục:** Mở lại Terminal 1, trong thư mục `Django_Learning` chạy `python manage.py runserver 8000` — Service đơn hàng phụ thuộc Service xác thực theo đúng kiến trúc SOA.
 
+### 9. Tạo báo cáo nhận `503` kèm thông báo "Service quản lý đơn hàng... không khả dụng" (Bài 5)
+- **Nguyên nhân:** Service quản lý đơn hàng (Terminal 3 chạy `runserver 8002`) đã bị tắt hoặc chưa khởi động — Service báo cáo không kéo được dữ liệu `GET /orders/<id>` để tổng hợp.
+- **Cách khắc phục:** Mở lại Terminal 3, trong thư mục `Django_Learning\order_service` chạy `python manage.py runserver 8002`.
+
+### 10. Tạo báo cáo sản phẩm nhận `503` kèm thông báo "Service quản lý sản phẩm... không khả dụng" (Bài 5)
+- **Nguyên nhân:** Service quản lý sản phẩm (Terminal 2 chạy `runserver 8001`) đã bị tắt hoặc chưa khởi động — Service báo cáo không kiểm tra được sản phẩm còn tồn tại hay không.
+- **Cách khắc phục:** Mở lại Terminal 2, trong thư mục `Django_Learning\product_service` chạy `python manage.py runserver 8001`.
+
+### 11. Mọi request `/reports/orders`, `/reports/products` nhận `503` hoặc `401` (Bài 5)
+- **Nguyên nhân (503):** Service xác thực (Terminal 1 chạy `runserver 8000`) đã bị tắt — middleware của Service báo cáo không gọi được `GET /auth`. **Nguyên nhân (401):** token sai, hết hạn hoặc chưa thêm tiền tố `Bearer ` trước chuỗi token.
+- **Cách khắc phục:** Mở lại Terminal 1 (`python manage.py runserver 8000`) và/hoặc đăng nhập lại lấy token mới, đảm bảo Header có dạng `Authorization: Bearer <token>`.
+
 ---
 
 ## 👨‍💻 THÔNG TIN DỰ ÁN & TÁC GIẢ
 
 - **Đơn vị đào tạo:** Bộ môn Mạng máy tính & Truyền thông / Kỹ thuật Phần mềm
 - **Môn học:** Phát triển Ứng dụng Phân tán & Web Services (RESTful API)
-- **Tài liệu tham chiếu:** [BÀI THỰC HÀNH SỐ 1.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%201.pdf) và [BÀI THỰC HÀNH SỐ 2.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%202.pdf) và [BÀI THỰC HÀNH SỐ 3.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%203.pdf) và [BÀI THỰC HÀNH SỐ 4.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%204.pdf)
+- **Tài liệu tham chiếu:** [BÀI THỰC HÀNH SỐ 1.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%201.pdf) và [BÀI THỰC HÀNH SỐ 2.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%202.pdf) và [BÀI THỰC HÀNH SỐ 3.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%203.pdf) và [BÀI THỰC HÀNH SỐ 4.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%204.pdf) và [BÀI THỰC HÀNH SỐ 5.pdf](file:///d:/CODES/Py/Django_Learning/docs/B%C3%80I%20TH%E1%BB%B0C%20H%C3%80NH%20S%E1%BB%90%205.pdf)
